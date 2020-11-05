@@ -1,0 +1,240 @@
+      *****************************************************************
+      *                                                               *
+      *       OBJETIVO: LER OS PRODUTOS DO ARQUIVO SEQUENCIAL         *
+      *                        E CARREGAR A TABELA                    *
+      *                                                               *
+      *****************************************************************
+      *---------------------------------------------------------------*
+       IDENTIFICATION                      DIVISION.
+      *---------------------------------------------------------------*
+       PROGRAM-ID.                         GPAZ08D1.
+       AUTHOR.                             KARINA.
+       DATE-WRITTEN.                       06/10/2020.
+       DATE-COMPILED.                      07/10/2020.
+       SECURITY.                           NENHUMA.
+      *---------------------------------------------------------------*
+       ENVIRONMENT                         DIVISION.
+      *---------------------------------------------------------------*
+       CONFIGURATION                       SECTION.
+       SOURCE-COMPUTER.                    NOTEBRQ.
+       OBJECT-COMPUTER.                    HERCULES01.
+       SPECIAL-NAMES.
+               DECIMAL-POINT IS COMMA.
+      *
+       INPUT-OUTPUT                        SECTION.
+       FILE-CONTROL.
+           SELECT CADPRDD1 ASSIGN          TO UT-S-CADPRDD1
+           FILE STATUS IS FS-CADPRDD1
+           .
+      *---------------------------------------------------------------*
+       DATA                                DIVISION.
+      *---------------------------------------------------------------*
+       FILE                                SECTION.
+       FD  CADPRDD1
+           RECORDING MODE IS F
+           .
+           COPY BK001D1 REPLACING ==::== BY ====.
+      *---------------------------------------------------------------*
+       WORKING-STORAGE                     SECTION.
+      *---------------------------------------------------------------*
+           COPY BK001D1 REPLACING ==::== BY ==WS-==.
+           COPY VARDATA.
+           COPY VARTEMPO.
+      *
+           EXEC SQL
+              INCLUDE BK002TP
+           END-EXEC
+      *
+           EXEC SQL
+              INCLUDE SQLCA
+           END-EXEC
+      *
+      *==> CONTADORES COMP
+       01  WS-CONTADORES-COMP.
+           05 WS-CTLIDO                    PIC 9(05) COMP.
+           05 WS-CTINS                     PIC 9(05) COMP.
+           05 WS-CTDUP                     PIC 9(05) COMP.
+           05 WS-CTINV                     PIC 9(05) COMP.
+      *==> CONTADORES FORMATADOS
+       01  WS-CONTADORES-FORM.
+           05 WS-CTLIDO-F                  PIC ZZ.Z9.
+           05 WS-CTINS-F                   PIC ZZ.Z9.
+           05 WS-CTDUP-F                   PIC ZZ.Z9.
+           05 WS-CTINV-F                   PIC ZZ.Z9.
+      *
+       01  FS-CADPRDD1                     PIC X(02).
+           88 SUCESSO-C                            VALUE "00".
+           88 FIMARQ-C                             VALUE "10".
+      *
+       77  WS-SQLCODE                      PIC +9(09).
+       77  WS-MSG                          PIC X(60).
+       77  WS-FS                           PIC X(02).
+      *==> MENSAGENS DE FS
+       77  WS-MSG01                        PIC X(60)
+                                                   VALUE
+           "ERRO AO ABRIR CADPRDD1".
+       77  WS-MSG02                        PIC X(60)
+                                                   VALUE
+           "ERRO AO LER CADPRDD1".
+       77  WS-MSG03                        PIC X(60)
+                                                   VALUE
+           "ERRO INSERT TBPRODUTO".
+       77  WS-MSG04                        PIC X(60)
+                                                   VALUE
+           "ERRO FECHAMENTO CADPRDD1".
+      *---------------------------------------------------------------*
+       PROCEDURE                           DIVISION.
+      *---------------------------------------------------------------*
+      *0000-GPAZ08D1.
+           PERFORM 1000-INICIALIZAR
+           PERFORM 2000-PROCESSAR
+                        UNTIL FIMARQ-C
+           PERFORM 3000-TERMINO
+           STOP RUN
+           .
+      *---------------------------------------------------------------*
+       1000-INICIALIZAR.
+           ACCEPT WS-HORARIO-INICIAL FROM TIME
+           MOVE 0                          TO WS-CTLIDO
+                                              WS-CTINS
+                                              WS-CTDUP
+                                              WS-CTINV
+           OPEN INPUT CADPRDD1
+           IF NOT SUCESSO-C
+              MOVE WS-MSG01                TO WS-MSG
+              MOVE FS-CADPRDD1             TO WS-FS
+              GO                           TO 9000-ERRO
+           END-IF
+      *
+           PERFORM 1100-LER-CADPRDD1
+           .
+      *---------------------------------------------------------------*
+       1100-LER-CADPRDD1.
+           READ CADPRDD1 INTO WS-REG-CADPRDD1
+           IF SUCESSO-C
+              ADD 1                        TO WS-CTLIDO
+           ELSE
+              IF NOT FIMARQ-C
+                 MOVE WS-MSG02             TO WS-MSG
+                 MOVE FS-CADPRDD1          TO WS-FS
+                 GO                        TO 9000-ERRO
+              END-IF
+           END-IF
+           .
+      *---------------------------------------------------------------*
+       2000-PROCESSAR.
+           MOVE WS-CODPROD-D1              TO CODPROD
+           MOVE +20                        TO DESCPROD-LEN
+           MOVE WS-DESCPROD-D1             TO DESCPROD-TEXT
+           MOVE WS-UNIDPROD-D1             TO UNIDPROD
+           MOVE WS-LOCALPROD-D1            TO LOCALPROD
+           MOVE WS-QTDEST-D1               TO QTDEST
+           MOVE WS-QTDMAX-D1               TO QTDMAX
+           MOVE WS-QTDMIN-D1               TO QTDMIN
+           MOVE WS-PRECOCOMPRA-D1          TO PRECOCOMPRA
+           MOVE WS-PRECOVENDA-D1           TO PRECOVENDA
+           MOVE WS-PERCOMIS-D1             TO PERCOMIS
+      *
+           EXEC SQL
+              INSERT INTO TBPRODUTO
+              (  CODPROD
+               , DESCPROD
+               , UNIDPROD
+               , LOCALPROD
+               , QTDEST
+               , QTDMAX
+               , QTDMIN
+               , PRECOCOMPRA
+               , PRECOVENDA
+               , PERCOMIS
+              )
+              VALUES
+             (  :CODPROD
+              , :DESCPROD
+              , :UNIDPROD
+              , :LOCALPROD
+              , :QTDEST
+              , :QTDMAX
+              , :QTDMIN
+              , :PRECOCOMPRA
+              , :PRECOVENDA
+              , :PERCOMIS
+             )
+           END-EXEC
+      *
+           EVALUATE SQLCODE
+              WHEN 0
+                 ADD 1                     TO WS-CTINS
+              WHEN -803
+                 ADD 1                     TO WS-CTDUP
+              WHEN -545
+                 ADD 1                     TO WS-CTINV
+              WHEN OTHER
+                 MOVE WS-MSG03             TO WS-MSG
+                 MOVE SQLCODE              TO WS-SQLCODE
+                 GO                        TO 9000-ERRO-DB2
+              END-EVALUATE
+      *
+              PERFORM 1100-LER-CADPRDD1
+              .
+      *---------------------------------------------------------------*
+       3000-TERMINO.
+           CLOSE CADPRDD1
+           IF NOT SUCESSO-C
+              MOVE WS-MSG04                TO WS-MSG
+              MOVE FS-CADPRDD1             TO WS-FS
+              GO                           TO 9000-ERRO
+           END-IF
+      *
+           ACCEPT WS-HORARIO-FINAL FROM TIME
+           COPY CALCTEMP.
+      *
+           MOVE WS-CTLIDO                  TO WS-CTLIDO-F
+           MOVE WS-CTINS                   TO WS-CTINS-F
+           MOVE WS-CTDUP                   TO WS-CTDUP-F
+           MOVE WS-CTINV                   TO WS-CTINV-F
+      *
+           PERFORM 9000-IMPRIME-DATA
+      *
+           DISPLAY "=================================================="
+           DISPLAY "==      ESTATISTICA FINAL DE PROCESSAMENTO      =="
+           DISPLAY "=================================================="
+           DISPLAY "QTDE. PRODUTOS LIDOS CADPRDD1........: "
+                                              WS-CTLIDO-F
+           DISPLAY "QTDE. PRODUTOS INSERIDOS TBPRODUTO...: "
+                                              WS-CTINS-F
+           DISPLAY "QTDE. PRODUTOS DUPLICADOS............: "
+                                              WS-CTDUP-F
+           DISPLAY "QTDE. PRODUTOS INVALIDOS.............: "
+                                              WS-CTINV-F
+           DISPLAY "=================================================="
+           DISPLAY "TEMPO TOTAL DE PROCESSAMENTO.........: "
+                                              WS-TEMPO-PROCESSAMENTO-F
+           DISPLAY "=================================================="
+           DISPLAY "==     TERMINO NORMAL DO PROGRAMA GPAZ08D1      =="
+           DISPLAY "=================================================="
+           .
+           COPY ROTDATA.
+      *---------------------------------------------------------------*
+       9000-ERRO.
+           DISPLAY "=================================================="
+           DISPLAY "MENSAGEM....: " WS-MSG
+           DISPLAY "FILE STATUS.: " WS-FS
+           DISPLAY "=================================================="
+           DISPLAY " ==     TERMINO ANORMAL DO PROGRAMA GPAZ08D1    =="
+           DISPLAY "=================================================="
+           MOVE 12                         TO RETURN-CODE
+           STOP RUN
+           .
+      *---------------------------------------------------------------*
+       9000-ERRO-DB2.
+           DISPLAY "=================================================="
+           DISPLAY "MENSAGEM....: " WS-MSG
+           DISPLAY "FILE STATUS.: " WS-SQLCODE
+           DISPLAY "=================================================="
+           DISPLAY " ==     TERMINO ANORMAL DO PROGRAMA GPAZ08D1    =="
+           DISPLAY "=================================================="
+           MOVE 16                         TO RETURN-CODE
+           STOP RUN
+           .
+      *---------------------------------------------------------------*
